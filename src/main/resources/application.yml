@@ -30,6 +30,9 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
+aliYunAi:
+  apiKey: sk-8278a1b12575485c9abf6883c1743e7b
+
 knife4j:
   enable: true
   openapi:

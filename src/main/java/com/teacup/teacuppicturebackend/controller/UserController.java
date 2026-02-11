@@ -25,7 +25,7 @@ import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 
 @RestController
-@RequestMapping("/user")
+@RequestMapping("/api/user")
 public class UserController {
 
     @Resource
@@ -35,7 +35,6 @@ public class UserController {
 根据 @Around("@annotation(authCheck)") 表达式，发现匹配成功
 执行 doInterceptor 方法，并自动将方法上的 @AuthCheck 注解实例作为 authCheck 参数传入*/
     @PostMapping("/register")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Long> userRegister(@RequestBody UserRegisterRequest userRegisterRequest) {
         ThrowUtils.throwIf(userRegisterRequest == null, ErrorCode.PARAMS_ERROR);
         long result = userService.userRegister(userRegisterRequest);

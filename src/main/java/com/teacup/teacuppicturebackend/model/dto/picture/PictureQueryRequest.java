@@ -14,17 +14,13 @@ public class PictureQueryRequest extends PageRequest implements Serializable {
   
       
     private Long id;  
-  
-      
+
     private String name;  
-  
-      
+
     private String introduction;  
-  
-      
+
     private String category;  
-  
-      
+
     private List<String> tags;
   
       
@@ -40,16 +36,25 @@ public class PictureQueryRequest extends PageRequest implements Serializable {
     private Double picScale;  
   
       
-    private String picFormat;  
-  
-      
+    private String picFormat;
+
+
+    /**
+     * 搜索文本
+     */
     private String searchText;  
   
       
     private Long userId;
 
+    private Long spaceId;
+
+
+    private boolean nullSpaceId;
+
+
     /**
-     * 审核状态：0待审核，1通过，2拒绝
+     * 审核状态：0待审核，2通过，3拒绝
      */
     private Integer reviewStatus;
 
@@ -67,6 +72,16 @@ public class PictureQueryRequest extends PageRequest implements Serializable {
      * 审核时间
      */
     private Date reviewTime;
+
+    /**
+     * 开始编辑时间
+     */
+    private Date startEditTime;
+
+    /**
+     * 结束编辑时间
+     */
+    private Date endEditTime;
   
     private static final long serialVersionUID = 1L;  
 }

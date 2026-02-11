@@ -1,11 +1,14 @@
 package com.teacup.teacuppicturebackend.service.impl;
 
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.ObjectUtils;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 
+import com.teacup.teacuppicturebackend.auth.StpKit;
+import com.teacup.teacuppicturebackend.constant.UserConstant;
 import com.teacup.teacuppicturebackend.exception.BusinessException;
 import com.teacup.teacuppicturebackend.exception.ErrorCode;
 import com.teacup.teacuppicturebackend.model.dto.user.UserQueryRequest;
@@ -97,7 +100,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户账号过短");
         }
 
-        if (userPassword.length() < 6 ) {
+        if (userPassword.length() < 8 ) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户密码过短");
         }
 
@@ -106,23 +109,29 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         //查询用户是否存在
         QueryWrapper<User> queryWrapper=new QueryWrapper<>();
         queryWrapper.eq("userAccount",userAccount);
-        queryWrapper.eq("userPassword",userPassword);
+        queryWrapper.eq("userPassword",encryptPassword);
         User user = this.baseMapper.selectOne(queryWrapper);
         //用户不存在
         if(user==null){
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR,"用户不存在或密码错误");
         }
         //3.记录用户的登录态
-        request.getSession().setAttribute("user_login_state",user);
+        request.getSession().setAttribute(USER_LOGIN_STATE,user);
+
+        StpKit.SPACE.login(user.getId());
+        StpKit.SPACE.getSession().set(USER_LOGIN_STATE, user);
+
 
         return this.getLoginUserVO(user);
+
+
     }
 
     @Override
     public User getLoginUser(HttpServletRequest request) {
 
         //先判断是否已经登录
-        Object userLoginState = request.getSession().getAttribute("user_login_state");
+        Object userLoginState = request.getSession().getAttribute(USER_LOGIN_STATE);
         User user=(User) userLoginState;
         if(user==null||user.getId()==null){
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR,"用户未登录");
@@ -143,7 +152,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             return null;
         }
         LoginUserVO vo=new LoginUserVO();
-        BeanUtils.copyProperties(user,vo);
+        BeanUtil.copyProperties(user,vo);
         return vo;
     }
 
@@ -166,7 +175,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         }
 
         UserVO userVO=new UserVO();
-        BeanUtils.copyProperties(user,userVO);
+        BeanUtil.copyProperties(user,userVO);
         return userVO;
 
     }
@@ -185,6 +194,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         if (userQueryRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数为空");
         }
+
 
         Long id = userQueryRequest.getId();
         String userAccount = userQueryRequest.getUserAccount();

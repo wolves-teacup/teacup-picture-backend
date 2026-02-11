@@ -26,10 +26,12 @@ public class AuthInterceptor {
     private UserService userService;
 
     //工作流程：
+
     /* spring aop扫描所有被@Around注解标记的方法
     *  解析"@annotation(authCheck)"，发现authCheck是方法中的参数
     *  因为authCheck类名为AuthCheck，当执行到被@AuthCheck标记的方法时，触发当前切面方法
     *  自动将方法上的 @AuthCheck 注解实例作为参数传入
+    *
     *  */
 
     //这里 authCheck 参数的类型是 AuthCheck，所以 @annotation(authCheck) 就是匹配所有被 @AuthCheck 注解标记的方法。

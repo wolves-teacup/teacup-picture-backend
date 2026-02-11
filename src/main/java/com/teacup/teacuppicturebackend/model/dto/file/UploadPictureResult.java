@@ -6,8 +6,9 @@ import lombok.Data;
 public class UploadPictureResult {  
   
       
-    private String url;  
-  
+    private String url;
+
+    private String thumbnailUrl;
       
     private String picName;  
   
@@ -24,6 +25,8 @@ public class UploadPictureResult {
     private Double picScale;  
   
       
-    private String picFormat;  
+    private String picFormat;
+
+    private String picColor;
   
 }

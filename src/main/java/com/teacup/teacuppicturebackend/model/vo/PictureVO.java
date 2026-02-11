@@ -13,11 +13,13 @@ import java.util.List;
 public class PictureVO implements Serializable {
   
       
-    private Long id;  
-  
+    private Long id;
+
+    private Long spaceId;
       
-    private String url;  
-  
+    private String url;
+
+    private String thumbnailUrl;
       
     private String name;  
   
@@ -43,8 +45,9 @@ public class PictureVO implements Serializable {
     private Double picScale;  
   
       
-    private String picFormat;  
-  
+    private String picFormat;
+
+    private String picColor;
       
     private Long userId;  
   
@@ -84,5 +87,9 @@ public class PictureVO implements Serializable {
         
         pictureVO.setTags(JSONUtil.toList(picture.getTags(), String.class));  
         return pictureVO;  
-    }  
+    }
+
+
+    public void setPermissionList(List<String> permissionList) {
+    }
 }
