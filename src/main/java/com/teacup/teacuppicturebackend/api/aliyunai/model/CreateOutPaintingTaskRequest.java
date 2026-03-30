@@ -13,7 +13,7 @@ import java.io.Serializable;
 public class CreateOutPaintingTaskRequest implements Serializable {
 
     
-    private String model = "image-out-painting";
+    private String model = "qwen-image-max";
 
     //输入图像信息
     private Input input;

@@ -25,13 +25,16 @@ import com.teacup.teacuppicturebackend.model.entity.Picture;
 import com.teacup.teacuppicturebackend.model.entity.Space;
 import com.teacup.teacuppicturebackend.model.entity.User;
 import com.teacup.teacuppicturebackend.model.enums.PictureReviewStatusEnum;
+import com.teacup.teacuppicturebackend.model.event.ClearEvent;
 import com.teacup.teacuppicturebackend.model.vo.PictureVO;
 import com.teacup.teacuppicturebackend.model.vo.UserVO;
 import com.teacup.teacuppicturebackend.service.PictureService;
 import com.teacup.teacuppicturebackend.service.SpaceService;
 import com.teacup.teacuppicturebackend.service.UserService;
+import com.teacup.teacuppicturebackend.service.observer.impl.PictureCacheClearObserver;
 import com.teacup.teacuppicturebackend.utils.ColorSimilarUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.ibatis.executor.BatchResult;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -39,6 +42,7 @@ import org.jsoup.select.Elements;
 import org.springframework.beans.BeanUtils;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -89,6 +93,8 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
     @Resource
     private AliYunAiApi aliYunAiApi;
 
+    @Resource
+    private  PictureCacheClearObserver pictureCacheClearObserver;
 
     @Override
     public PictureVO uploadPicture(Object inputSource, PictureUploadRequest pictureUploadRequest, User loginUser) {
@@ -165,6 +171,7 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         } else {
             uploadPathPrefix = String.format("space/%s", spaceId);
         }
+
         //根据inputSource判断上传方式
         PictureUploadTemplate pictureUploadTemplate=filePictureUpload;
         if(inputSource instanceof String){
@@ -403,17 +410,14 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         ThrowUtils.throwIf(pictureId <= 0, ErrorCode.PARAMS_ERROR);
         ThrowUtils.throwIf(loginUser == null, ErrorCode.NO_AUTH_ERROR);
 
-
         Picture oldPicture = this.getById(pictureId);
         ThrowUtils.throwIf(oldPicture == null, ErrorCode.NOT_FOUND_ERROR);
 
         checkPictureAuth(loginUser, oldPicture);
 
         transactionTemplate.execute(status -> {
-
             boolean result = this.removeById(pictureId);
             ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
-
             Long spaceId = oldPicture.getSpaceId();
             if (spaceId != null) {
                 boolean update = spaceService.lambdaUpdate()
@@ -425,9 +429,9 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
             }
             return true;
         });
-
+        //直接调用清理缓存
+        pictureCacheClearObserver.handleClearEvent(new ClearEvent());
         this.clearPictureFile(oldPicture);
-
         return true;
 
     }
@@ -647,7 +651,133 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         }
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
     }
+
+    /**
+     *     方案二：使用 TransactionTemplate（推荐）
+     * @Override
+     * public void batchEditPictureMetadata(PictureEditByBatchRequest request, Long spaceId, Long loginUserId) {
+     *
+     *     List<Picture> pictureList = this.lambdaQuery()
+     *             .eq(Picture::getSpaceId, spaceId)
+     *             .in(Picture::getId, request.getPictureIdList())
+     *             .list();
+     *
+     *     if (pictureList.isEmpty()) {
+     *         throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "指定的图片不存在");
+     *     }
+     *
+     *     int batchSize = 100;
+     *     List<CompletableFuture<Void>> futures = new ArrayList<>();
+     *
+     *     for (int i = 0; i < pictureList.size(); i += batchSize) {
+     *         List<Picture> batch = pictureList.subList(i, Math.min(i + batchSize, pictureList.size()));
+     *
+     *         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+     *     batch.forEach(picture -> {
+     *         // 每条记录独立开启事务
+     *         transactionTemplate.execute(status -> {
+     *             try {
+     *                 if (request.getCategory() != null) {
+     *                     picture.setCategory(request.getCategory());
+     *                 }
+     *                 if (request.getTags() != null) {
+     *                     picture.setTags(String.join(",", request.getTags()));
+     *                 }
+     *
+     *                 boolean result = this.updateById(picture);  // 单条更新
+     *                 if (!result) {
+     *                     status.setRollbackOnly();
+     *                     log.warn("图片{}更新失败，已回滚", picture.getId());
+     *                 }
+     *                 return null;
+     *             } catch (Exception e) {
+     *                 status.setRollbackOnly();
+     *                 log.error("图片{}更新异常", picture.getId(), e);
+     *                 return null;  // 捕获异常避免中断整个batch
+     *             }
+     *         });
+     *     });
+     * }, customExecutor);
+     *     }
+     *
+     *     // 等待所有任务完成
+     *     CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+     * }
+     *
+     *
+     */
+
+
+
+    /**
+     *               方案一
+     * // 主方法：不加事务，仅做任务分发
+     * @Override
+     * public BatchEditResult batchEditPictureMetadata(PictureEditByBatchRequest request, Long spaceId, Long loginUserId) {
+     *     List<Picture> pictureList = this.lambdaQuery()
+     *             .eq(Picture::getSpaceId, spaceId)
+     *             .in(Picture::getId, request.getPictureIdList())
+     *             .list();
+     *
+     *     if (pictureList.isEmpty()) {
+     *         throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "指定的图片不存在或不属于该空间");
+     *     }
+     *
+     *     // 记录任务开始（可选：存入任务表）
+     *     String taskId = UUID.randomUUID().toString();
+     *     taskService.createBatchTask(taskId, pictureList.size());
+     *
+     *     // 异步处理每个批次
+     *     List<CompletableFuture<BatchResult>> futures = Lists.partition(pictureList, 100).stream()
+     *             .map(batch -> processBatchAsync(batch, request, taskId))
+     *             .collect(Collectors.toList());
+     *
+     *     // 等待并聚合结果
+     *     List<BatchResult> results = futures.stream()
+     *             .map(CompletableFuture::join)
+     *             .collect(Collectors.toList());
+     *
+     *     return aggregateResults(results, taskId);
+     * }
+     *
+     * // 异步任务：独立事务
+     * @Async("customExecutor")
+     * @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+     * public CompletableFuture<BatchResult> processBatchAsync(
+     *         List<Picture> batch, PictureEditByBatchRequest request, String taskId) {
+     *
+     *     try {
+     *         // 深拷贝避免修改共享对象
+     *         List<Picture> batchCopy = batch.stream()
+     *                 .map(p -> BeanUtil.copyProperties(p, Picture.class))
+     *                 .collect(Collectors.toList());
+     *
+     *         batchCopy.forEach(picture -> {
+     *             if (request.getCategory() != null) {
+     *                 picture.setCategory(request.getCategory());
+     *             }
+     *             if (request.getTags() != null) {
+     *                 picture.setTags(String.join(",", request.getTags()));
+     *             }
+     *         });
+     *
+     *         boolean success = this.updateBatchById(batchCopy);
+     *
+     *         // 更新任务进度
+     *         taskService.updateTaskProgress(taskId, batch.size(), success ? 0 : batch.size());
+     *
+     *         return CompletableFuture.completedFuture(
+     *                 new BatchResult(success, batch.size(), null));
+     *     } catch (Exception e) {
+     *         log.error("批次处理失败", e);
+     *         taskService.updateTaskProgress(taskId, 0, batch.size());
+     *         return CompletableFuture.completedFuture(
+     *                 new BatchResult(false, 0, batch.size()));
+     *     }
+     * }
+     */
 
 
     /**

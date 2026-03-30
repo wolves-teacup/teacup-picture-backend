@@ -53,7 +53,7 @@ public class PictureEditHandler extends TextWebSocketHandler {
     private final Map<Long, Set<WebSocketSession>> pictureSessions = new ConcurrentHashMap<>();
 
     /**
-     * 连接建立成功
+     * 连接建立
      *
      * @param session
      * @throws Exception
