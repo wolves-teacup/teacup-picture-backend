@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit;
 public class CacheConfig {
 
     @Bean("pictureLocalCache")
-    public Cache<String, Object> pictureLocalCache() {
+    public Cache<String, String> pictureLocalCache() {
         return Caffeine.newBuilder()
                 .maximumSize(1000)  // 最大缓存1000个元素
                 .expireAfterWrite(30, TimeUnit.MINUTES)  // 写入后30分钟过期

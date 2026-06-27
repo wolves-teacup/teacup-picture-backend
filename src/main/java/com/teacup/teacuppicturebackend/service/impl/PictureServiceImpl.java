@@ -221,6 +221,10 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
             return picture;
         });
 
+        ClearEvent uploadEvent = ClearEvent.of("UPDATE", "PICTURE", picture.getId());
+        if (pictureCacheClearObserver.supports(uploadEvent)) {
+            pictureCacheClearObserver.handleClearEvent(uploadEvent);
+        }
 
         return PictureVO.objToVo(picture);
 
@@ -375,9 +379,6 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         }
         //4.数据库操作
         Picture updatePicture = new Picture();
-        if(pictureReviewRequest.getReviewStatus()==1) {
-            pictureReviewRequest.setReviewStatus(2);
-        }
         BeanUtils.copyProperties(pictureReviewRequest, updatePicture);
         updatePicture.setReviewerId(loginUser.getId());
         updatePicture.setReviewTime(new Date());
@@ -429,8 +430,10 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
             }
             return true;
         });
-        //直接调用清理缓存
-        pictureCacheClearObserver.handleClearEvent(new ClearEvent());
+        ClearEvent deleteEvent = ClearEvent.of("DELETE", "PICTURE", pictureId);
+        if (pictureCacheClearObserver.supports(deleteEvent)) {
+            pictureCacheClearObserver.handleClearEvent(deleteEvent);
+        }
         this.clearPictureFile(oldPicture);
         return true;
 
@@ -459,6 +462,10 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         boolean result = this.updateById(picture);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
 
+        ClearEvent editEvent = ClearEvent.of("UPDATE", "PICTURE", id);
+        if (pictureCacheClearObserver.supports(editEvent)) {
+            pictureCacheClearObserver.handleClearEvent(editEvent);
+        }
         return result;
     }
 
@@ -708,8 +715,6 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
      *
      *
      */
-
-
 
     /**
      *               方案一

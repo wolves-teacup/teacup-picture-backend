@@ -33,6 +33,14 @@ mybatis-plus:
 aliYunAi:
   apiKey: sk-8278a1b12575485c9abf6883c1743e7b
 
+cos:
+  client:
+    host: https://example.cos.ap-guangzhou.myqcloud.com
+    secretId: your-secret-id
+    secretKey: your-secret-key
+    region: ap-guangzhou
+    bucket: example-bucket
+
 knife4j:
   enable: true
   openapi:

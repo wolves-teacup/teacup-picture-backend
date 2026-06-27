@@ -112,7 +112,7 @@ public class Picture {
     private Integer isDelete;
 
     /**
-     * 审核状态：0待审核，2通过，3拒绝
+     * 审核状态：0待审核，1通过，2拒绝
      */
     private Integer reviewStatus;
 

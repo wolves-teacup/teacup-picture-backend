@@ -1,6 +1,7 @@
 package com.teacup.teacuppicturebackend.controller;
 
 
+import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.teacup.teacuppicturebackend.annotation.AuthCheck;
 import com.teacup.teacuppicturebackend.auth.model.SpaceUserAuthManager;
@@ -24,6 +25,7 @@ import com.teacup.teacuppicturebackend.service.SpaceService;
 import com.teacup.teacuppicturebackend.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -31,6 +33,7 @@ import javax.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -46,6 +49,12 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/space")
 public class SpaceController {
 
+    private static final String SPACE_CACHE_PREFIX = "teacuppicture:space:";
+
+    private static final List<SpaceLevel> SPACE_LEVEL_LIST = Arrays.stream(SpaceLevelEnum.values())
+            .map(e -> new SpaceLevel(e.getValue(), e.getText(), e.getMaxCount(), e.getMaxSize()))
+            .collect(Collectors.toList());
+
     @Resource
     private UserService userService;
 
@@ -54,6 +63,9 @@ public class SpaceController {
 
     @Resource
     private SpaceUserAuthManager spaceUserAuthManager;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
 
     @PostMapping("/add")
     public BaseResponse<Long> addSpace(@RequestBody SpaceAddRequest spaceAddRequest, HttpServletRequest request) {
@@ -79,6 +91,7 @@ public class SpaceController {
         // 操作数据库
         boolean result = spaceService.removeById(id);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        stringRedisTemplate.delete(SPACE_CACHE_PREFIX + id);
         return ResultUtils.success(true);
     }
 
@@ -110,11 +123,9 @@ public class SpaceController {
         // 操作数据库
         boolean result = spaceService.updateById(space);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        stringRedisTemplate.delete(SPACE_CACHE_PREFIX + id);
         return ResultUtils.success(true);
     }
-
-    /**
-     * 根据 id 获取空间（仅管理员可用）
      */
     @GetMapping("/get")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
@@ -133,14 +144,19 @@ public class SpaceController {
     @GetMapping("/get/vo")
     public BaseResponse<SpaceVO> getSpaceVOById(long id, HttpServletRequest request) {
         ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
-        // 查询数据库
-        Space space = spaceService.getById(id);
-        ThrowUtils.throwIf(space == null, ErrorCode.NOT_FOUND_ERROR);
+        String cacheKey = SPACE_CACHE_PREFIX + id;
+        String cached = stringRedisTemplate.opsForValue().get(cacheKey);
+        Space space;
+        if (cached != null) {
+            space = JSONUtil.toBean(cached, Space.class);
+        } else {
+            space = spaceService.getById(id);
+            ThrowUtils.throwIf(space == null, ErrorCode.NOT_FOUND_ERROR);
+            stringRedisTemplate.opsForValue().set(cacheKey, JSONUtil.toJsonStr(space), 10, TimeUnit.MINUTES);
+        }
         SpaceVO spaceVO = spaceService.getSpaceVO(space, request);
         User loginUser = userService.getLoginUser(request);
-        List<String> permissionList = spaceUserAuthManager.getPermissionList(space, loginUser);
-        spaceVO.setPermissionList(permissionList);
-        // 获取封装类
+        spaceVO.setPermissionList(spaceUserAuthManager.getPermissionList(space, loginUser));
         return ResultUtils.success(spaceVO);
     }
 
@@ -202,24 +218,12 @@ public class SpaceController {
         // 操作数据库
         boolean result = spaceService.updateById(space);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        stringRedisTemplate.delete(SPACE_CACHE_PREFIX + id);
         return ResultUtils.success(true);
     }
 
-    /**
-     * 获取空间级别列表，便于前端展示
-     *
-     * @return
-     */
     @GetMapping("/list/level")
     public BaseResponse<List<SpaceLevel>> listSpaceLevel() {
-        List<SpaceLevel> spaceLevelList = Arrays.stream(SpaceLevelEnum.values())
-                .map(spaceLevelEnum -> new SpaceLevel(
-                        spaceLevelEnum.getValue(),
-                        spaceLevelEnum.getText(),
-                        spaceLevelEnum.getMaxCount(),
-                        spaceLevelEnum.getMaxSize()
-                ))
-                .collect(Collectors.toList());
-        return ResultUtils.success(spaceLevelList);
+        return ResultUtils.success(SPACE_LEVEL_LIST);
     }
 }

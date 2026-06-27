@@ -30,6 +30,9 @@ public class CosClientConfig {
 
     @Bean
     public COSClient cosClient() {
+        if (secretId == null || secretId.isEmpty()) {
+            return new COSClient(new BasicCOSCredentials("dummy", "dummy"), new ClientConfig(new Region(region == null ? "ap-guangzhou" : region)));
+        }
 
         COSCredentials cred = new BasicCOSCredentials(secretId, secretKey);
 

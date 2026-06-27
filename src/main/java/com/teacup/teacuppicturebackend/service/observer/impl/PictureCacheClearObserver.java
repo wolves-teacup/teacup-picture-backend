@@ -1,15 +1,18 @@
 package com.teacup.teacuppicturebackend.service.observer.impl;
 
-import cn.hutool.core.util.StrUtil;
 import com.github.benmanes.caffeine.cache.Cache;
-import com.teacup.teacuppicturebackend.model.entity.Picture;
 import com.teacup.teacuppicturebackend.model.event.ClearEvent;
 import com.teacup.teacuppicturebackend.service.observer.CacheClearObserver;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
+import java.io.IOException;
+import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -22,7 +25,7 @@ public class PictureCacheClearObserver implements CacheClearObserver {
     @Resource
     private StringRedisTemplate stringRedisTemplate;
     
-//    @Resource(name = "pictureLocalCache")
+    @Resource(name = "pictureLocalCache")
     private Cache<String, String> pictureLocalCache;
     
     private static final String ENTITY_TYPE = "PICTURE";
@@ -56,8 +59,23 @@ public class PictureCacheClearObserver implements CacheClearObserver {
     
     @Override
     public boolean supports(ClearEvent event) {
-        return ENTITY_TYPE.equals(event.getEntityType()) && 
-               "DELETE".equals(event.getEventType());
+        return ENTITY_TYPE.equals(event.getEntityType()) &&
+               ("DELETE".equals(event.getEventType()) || "UPDATE".equals(event.getEventType()));
+    }
+
+    private Set<String> scanKeys(String pattern) {
+        return stringRedisTemplate.execute((RedisCallback<Set<String>>) connection -> {
+            Set<String> keySet = new HashSet<>();
+            try (Cursor<byte[]> cursor = connection.scan(
+                    ScanOptions.scanOptions().match(pattern).count(200).build())) {
+                while (cursor.hasNext()) {
+                    keySet.add(new String(cursor.next()));
+                }
+            } catch (IOException e) {
+                log.warn("SCAN keys异常, pattern: {}", pattern, e);
+            }
+            return keySet;
+        });
     }
     
     /**
@@ -77,7 +95,7 @@ public class PictureCacheClearObserver implements CacheClearObserver {
     private void clearRelatedPageCache() {
         try {
             // 匹配所有分页查询缓存
-            Set<String> keys = stringRedisTemplate.keys(CACHE_KEY_PREFIX + "listPictureVOByPage:*");
+            Set<String> keys = scanKeys(CACHE_KEY_PREFIX + "listPictureVOByPage:*");
             if (keys != null && !keys.isEmpty()) {
                 stringRedisTemplate.delete(keys);
                 // 清理本地缓存中对应的分页数据
@@ -95,14 +113,14 @@ public class PictureCacheClearObserver implements CacheClearObserver {
     private void clearSearchCache() {
         try {
             // 清理颜色搜索缓存
-            Set<String> colorKeys = stringRedisTemplate.keys(CACHE_KEY_PREFIX + "search:color:*");
+            Set<String> colorKeys = scanKeys(CACHE_KEY_PREFIX + "search:color:*");
             if (colorKeys != null && !colorKeys.isEmpty()) {
                 stringRedisTemplate.delete(colorKeys);
                 colorKeys.forEach(pictureLocalCache::invalidate);
             }
             
             // 清理标签搜索缓存
-            Set<String> tagKeys = stringRedisTemplate.keys(CACHE_KEY_PREFIX + "search:tag:*");
+            Set<String> tagKeys = scanKeys(CACHE_KEY_PREFIX + "search:tag:*");
             if (tagKeys != null && !tagKeys.isEmpty()) {
                 stringRedisTemplate.delete(tagKeys);
                 tagKeys.forEach(pictureLocalCache::invalidate);
